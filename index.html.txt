@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Remove Background</title>
+
+<style>
+body{
+    font-family: Arial, sans-serif;
+    background:#f5f5f5;
+    margin:0;
+    padding:20px;
+}
+
+.container{
+    max-width:1000px;
+    margin:auto;
+}
+
+h2{
+    text-align:center;
+}
+
+.drop-zone{
+    border:3px dashed #888;
+    border-radius:10px;
+    padding:40px;
+    text-align:center;
+    background:white;
+    cursor:pointer;
+    transition:0.3s;
+}
+
+.drop-zone.dragover{
+    background:#e8f4ff;
+    border-color:#2196F3;
+}
+
+.controls{
+    margin-top:15px;
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+}
+
+button{
+    padding:10px 20px;
+    cursor:pointer;
+    border:none;
+    border-radius:5px;
+    background:#2196F3;
+    color:white;
+}
+
+button:hover{
+    opacity:0.9;
+}
+
+.preview{
+    margin-top:20px;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:20px;
+}
+
+.card{
+    background:white;
+    padding:10px;
+    border-radius:10px;
+}
+
+canvas{
+    width:100%;
+    border:1px solid #ddd;
+    background:
+        linear-gradient(45deg,#ccc 25%,transparent 25%),
+        linear-gradient(-45deg,#ccc 25%,transparent 25%),
+        linear-gradient(45deg,transparent 75%,#ccc 75%),
+        linear-gradient(-45deg,transparent 75%,#ccc 75%);
+    background-size:20px 20px;
+    background-position:0 0,0 10px,10px -10px,-10px 0px;
+}
+
+input[type=range]{
+    width:250px;
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+    <h2>Xóa Background Thành Trong Suốt</h2>
+
+    <div class="drop-zone" id="dropZone">
+        Kéo thả ảnh vào đây hoặc Click để chọn ảnh
+        <input type="file" id="fileInput" accept="image/*" hidden>
+    </div>
+
+    <div class="controls">
+        <label>
+            Ngưỡng màu trắng:
+            <input type="range" id="threshold" min="150" max="255" value="240">
+        </label>
+
+        <button id="processBtn">
+            Xóa nền
+        </button>
+
+        <button id="saveBtn">
+            Tải PNG
+        </button>
+    </div>
+
+    <div class="preview">
+
+        <div class="card">
+            <h3>Ảnh gốc</h3>
+            <canvas id="originalCanvas"></canvas>
+        </div>
+
+        <div class="card">
+            <h3>Kết quả</h3>
+            <canvas id="resultCanvas"></canvas>
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+
+const dropZone = document.getElementById("dropZone");
+const fileInput = document.getElementById("fileInput");
+
+const originalCanvas = document.getElementById("originalCanvas");
+const resultCanvas = document.getElementById("resultCanvas");
+
+const processBtn = document.getElementById("processBtn");
+const saveBtn = document.getElementById("saveBtn");
+const thresholdSlider = document.getElementById("threshold");
+
+const octx = originalCanvas.getContext("2d");
+const rctx = resultCanvas.getContext("2d");
+
+let currentImage = null;
+
+dropZone.addEventListener("click",()=>{
+    fileInput.click();
+});
+
+fileInput.addEventListener("change",(e)=>{
+    loadImage(e.target.files[0]);
+});
+
+dropZone.addEventListener("dragover",(e)=>{
+    e.preventDefault();
+    dropZone.classList.add("dragover");
+});
+
+dropZone.addEventListener("dragleave",()=>{
+    dropZone.classList.remove("dragover");
+});
+
+dropZone.addEventListener("drop",(e)=>{
+    e.preventDefault();
+    dropZone.classList.remove("dragover");
+
+    const file = e.dataTransfer.files[0];
+    loadImage(file);
+});
+
+function loadImage(file){
+
+    if(!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = function(e){
+
+        const img = new Image();
+
+        img.onload = function(){
+
+            currentImage = img;
+
+            originalCanvas.width = img.width;
+            originalCanvas.height = img.height;
+
+            resultCanvas.width = img.width;
+            resultCanvas.height = img.height;
+
+            octx.drawImage(img,0,0);
+
+            rctx.clearRect(
+                0,
+                0,
+                resultCanvas.width,
+                resultCanvas.height
+            );
+
+            rctx.drawImage(img,0,0);
+        }
+
+        img.src = e.target.result;
+    }
+
+    reader.readAsDataURL(file);
+}
+
+processBtn.addEventListener("click",()=>{
+
+    if(!currentImage){
+        alert("Vui lòng chọn ảnh");
+        return;
+    }
+
+    const threshold =
+        parseInt(thresholdSlider.value);
+
+    const imageData =
+        octx.getImageData(
+            0,
+            0,
+            originalCanvas.width,
+            originalCanvas.height
+        );
+
+    const data = imageData.data;
+
+    for(let i=0;i<data.length;i+=4){
+
+        const r = data[i];
+        const g = data[i+1];
+        const b = data[i+2];
+
+        if(
+            r > threshold &&
+            g > threshold &&
+            b > threshold
+        ){
+            data[i+3] = 0;
+        }
+    }
+
+    rctx.putImageData(imageData,0,0);
+
+});
+
+saveBtn.addEventListener("click", async ()=>{
+
+    const blob = await new Promise(resolve=>{
+        resultCanvas.toBlob(resolve,"image/png");
+    });
+
+    if(window.showSaveFilePicker){
+
+        try{
+
+            const handle =
+                await window.showSaveFilePicker({
+
+                suggestedName:
+                    "transparent.png",
+
+                types:[
+                    {
+                        description:"PNG Image",
+                        accept:{
+                            "image/png":[".png"]
+                        }
+                    }
+                ]
+            });
+
+            const writable =
+                await handle.createWritable();
+
+            await writable.write(blob);
+            await writable.close();
+
+            alert("Đã lưu thành công");
+
+        }catch(err){
+            console.log(err);
+        }
+
+    }else{
+
+        const a =
+            document.createElement("a");
+
+        a.href =
+            URL.createObjectURL(blob);
+
+        a.download =
+            "transparent.png";
+
+        a.click();
+    }
+});
+
+</script>
+
+</body>
+</html>
